@@ -228,4 +228,4 @@ scripts/              Build and smoke-test tooling
 
 ## License
 
-See the repository for license details.
+MIT © 2026 qingyu31. See [LICENSE](LICENSE) for details.

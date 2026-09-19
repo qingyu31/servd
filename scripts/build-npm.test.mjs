@@ -24,7 +24,7 @@ test('root package publishes only the launcher with all exact-version optional d
   ));
   assert.equal(source.dependencies, undefined);
   assert.equal(source.devDependencies, undefined);
-  assert.equal(source.license, undefined);
+  assert.equal(source.license, 'MIT');
   assert.deepEqual(source.scripts, {
     test: 'go test ./... && npm run test:node',
     'test:node': 'node --test npm/test/*.test.cjs scripts/*.test.mjs',
@@ -47,7 +47,7 @@ test('generates seven same-version manifests with exact platform and file restri
   for (const [key, manifest] of Object.entries(manifests)) {
     assert.equal(manifest.version, source.version);
     assert.equal(manifest.scripts, undefined);
-    assert.equal(manifest.license, undefined);
+    assert.equal(manifest.license, 'MIT');
     assert.deepEqual(manifest.publishConfig, { access: 'public', registry: 'https://registry.npmjs.org' });
     if (key === 'main') {
       assert.equal(manifest.os, undefined);
@@ -81,6 +81,8 @@ test('refuses version drift, missing optional packages, and main-package file le
   assert.throws(() => createManifests({ ...source, optionalDependencies: {} }), /exactly match/);
   assert.throws(() => createManifests({ ...source, files: [...source.files, 'dist'] }), /only the launcher/);
   assert.throws(() => createManifests({ ...source, engines: { node: '>=16' } }), /Node >=18/);
+  assert.throws(() => createManifests({ ...source, license: 'Apache-2.0' }), /license "MIT"/);
+  assert.throws(() => createManifests({ ...source, license: undefined }), /license "MIT"/);
 });
 
 test('defaults to six platforms and accepts one-platform pack smoke builds', () => {

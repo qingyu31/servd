@@ -39,6 +39,9 @@ export function createManifests(source) {
       source.engines?.node !== '>=18') {
     throw new Error('Root package.json must publish only the launcher and require Node >=18.');
   }
+  if (source.license !== 'MIT') {
+    throw new Error('Root package.json must declare license "MIT" to match the repository LICENSE file.');
+  }
   const optionalDependencies = Object.fromEntries(
     PLATFORMS.map((platform) => [`${name}-${platform}`, version]),
   );
@@ -51,6 +54,7 @@ export function createManifests(source) {
       name,
       version,
       ...(source.description ? { description: source.description } : {}),
+      license: source.license,
       bin: { servd: LAUNCHER },
       files: [LAUNCHER],
       engines: { node: source.engines.node },
@@ -65,6 +69,7 @@ export function createManifests(source) {
       name: packageName,
       version,
       description: `Native binary for servd on ${platform}.`,
+      license: source.license,
       os: [os],
       cpu: [cpu],
       files: [`bin/${binary}`],

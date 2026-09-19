@@ -228,4 +228,4 @@ scripts/              构建与冒烟测试工具
 
 ## 许可证
 
-许可证详情请见仓库。
+MIT © 2026 qingyu31。详见 [LICENSE](LICENSE)。

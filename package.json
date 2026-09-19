@@ -2,6 +2,7 @@
   "name": "@qingyu31/servd",
   "version": "0.1.0",
   "description": "A small static file server powered by Go.",
+  "license": "MIT",
   "bin": {
     "servd": "npm/bin/servd.cjs"
   },
