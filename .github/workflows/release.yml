@@ -1,0 +1,117 @@
+# Build, test, and publish the servd npm packages to the public registry.
+#
+# servd ships to npm as a tiny launcher (@qingyu31/servd) plus one native binary
+# package per platform (@qingyu31/servd-<os>-<arch>). All six binaries are
+# cross-compiled from this single Linux runner by scripts/build-npm.mjs, then
+# scripts/publish.mjs publishes the platform packages first and the main package
+# last so optionalDependencies always resolve for anyone installing mid-release.
+#
+# Release by pushing a version tag (vX.Y.Z that matches package.json); it goes
+# to https://registry.npmjs.org. Prerelease tags (vX.Y.Z-*) publish under the
+# "next" dist-tag so they never become "latest". You can also run this workflow
+# manually to validate the whole flow with `npm publish --dry-run`.
+#
+# Required repository secret:
+#   NPM_TOKEN  An npm "Granular Access" token for the @qingyu31 scope, with
+#              Read and write package permissions and the "Automation" 2FA
+#              bypass. The release script writes it to a throwaway npmrc pinned
+#              to the official registry, so no mirror ever sees the token.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (npm publish --dry-run; publishes nothing)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never cancel an in-flight publish: a half-released version is worse than a
+# queued one. The release script skips any name@version already on the registry,
+# so re-running after a partial failure completes only the missing packages.
+concurrency:
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, test, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Fail in seconds instead of after a full cross-compile if the token is
+      # missing. A dry run still authenticates (publish.mjs runs `npm whoami`
+      # before building), so the token is required in both modes.
+      - name: Require NPM_TOKEN
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not configured. Add an npm automation token to publish (see this workflow's header comment)."
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The root package has no dependencies and no lockfile, so there is
+      # nothing to install; npm only runs the local build/test/release scripts.
+
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${version}. Bump package.json, commit, then re-tag."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package.json version ${version}."
+
+      - name: Test (Go + Node)
+        run: npm test
+
+      - name: Build and pack tarballs
+        run: npm run pack
+
+      # The smoke test installs the freshly packed tarballs and exercises the
+      # launcher end to end (static/SPA/proxy/WS/CORS/gzip/cache/daemon/TLS) on
+      # this runner's platform. Its TLS fixture is gitignored, so regenerate it.
+      - name: Generate smoke-test TLS fixture
+        run: go run testdata/tls/gencert.go
+
+      - name: Smoke-test packed package
+        run: npm run test:smoke
+
+      # publish.mjs rebuilds and repacks authoritatively, so the tarballs that
+      # ship are produced in this same step rather than reused from the gate.
+      - name: Publish to npm
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          case "$REF_NAME" in
+            v*-*) args+=(--tag=next) ;;
+          esac
+          echo "Publishing with: node scripts/publish.mjs ${args[*]}"
+          node scripts/publish.mjs "${args[@]}"
